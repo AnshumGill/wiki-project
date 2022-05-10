@@ -7,6 +7,7 @@ from celery import Celery
 from celery.utils.log import get_task_logger
 import time
 
+# Make instance of Celery
 def make_celery(app):
     celery = Celery(
         'app',
@@ -23,6 +24,7 @@ def make_celery(app):
     celery.Task = ContextTask
     return celery
 
+# Log Configuration
 dictConfig({
     'version': 1,
     'formatters': {'default': {
@@ -41,31 +43,40 @@ dictConfig({
     }
 })
 
+# Flask app definition and configuration
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"]="mysql+pymysql://root:password@db:3306/wiki"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"]="False"
 db.app=app
+# Initializing DB now as it was created in models
 db.init_app(app)
+# Creating tables if not exists
 db.create_all()
 
+# Updating app.config with Celery configuration 
 app.config.update(
     broker_url="amqp://guest:guest@broker_rabbitmq",
     result_backend="db+mysql://root:password@db:3306/celery"
 )
 
+# Celery instance
 celery=make_celery(app)
+# For logging inside celery tasks
 logger=get_task_logger(__name__)
 
+# Mapping of <type> with Object
 obj_map={
     'continent':Continent,
     'country':Country,
     'city':City
 }
 
+# Celery Task for insertion
 @celery.task(name="app.celeryInsert")
 def celeryInsert(type,data):
     t=time.process_time()
-    objects=[obj_map[type](**obj) for obj in data]
+    # List comprehension to get Object using map and pass the data dictionary into it's constructor
+    objects=[obj_map[type](**obj) for obj in data] 
     try:
         db.session.add_all(objects)
         db.session.commit()    
@@ -76,9 +87,11 @@ def celeryInsert(type,data):
         logger.info(f"Execution of task used {time.process_time() - t} seconds")
         return False
 
+# Celery Task for Deletion
 @celery.task(name="app.celeryDelete")
 def celeryDelete(type,name):
     t=time.process_time()
+    # Getting specific element for deletion
     obj=obj_map[type].query.filter_by(name=name).first()
     try:
         db.session.delete(obj)
@@ -90,14 +103,16 @@ def celeryDelete(type,name):
         logger.info(f"Execution of task used {time.process_time() - t} seconds")
         return False
 
+# Celery Task for Updating Continent
 @celery.task(name="app.celeryUpdateContinent")
 def celeryUpdateContinent(name,data):
     t=time.process_time()
     try:
+        # Getting Object 
         obj=Continent.query.filter_by(name=name).first()
+        # Setting it's attribute to data dictionary 
         setattr(obj,'population',data['population'])
         setattr(obj,'area',data['area'])
-        time.sleep(10)
         db.session.commit()
         logger.info(f"Execution of task used {time.process_time() - t} seconds")
         return True
@@ -106,11 +121,14 @@ def celeryUpdateContinent(name,data):
         logger.info(f"Execution of task used {time.process_time() - t} seconds")
         return False
 
+# Celery Task for Updating Country
 @celery.task(name="app.celeryUpdateCountry")
 def celeryUpdateCountry(name,data):
     t=time.process_time()
     try:
+        # Getting Object
         obj=Country.query.filter_by(name=name).first()
+        # Setting it's attribute to data dictionary 
         setattr(obj,'population',data['population'])
         setattr(obj,'area',data['area'])
         setattr(obj,'hospitals_count',data['hospitals_count'])
@@ -127,11 +145,14 @@ def celeryUpdateCountry(name,data):
         logger.info(f"Execution of task used {time.process_time() - t} seconds")
         return False
 
+# Celery Task for Updating City
 @celery.task(name="app.celeryUpdateCity")
 def celeryUpdateCity(name,data):
     t=time.process_time()
     try:
+        # Getting Object
         obj=Country.query.filter_by(name=name).first()
+        # Setting it's attribute to data dictionary 
         setattr(obj,'population',data['population'])
         setattr(obj,'area',data['area'])
         setattr(obj,'road_count',data['road_count'])
@@ -148,6 +169,7 @@ def celeryUpdateCity(name,data):
         logger.info(f"Execution of task used {time.process_time() - t} seconds")
         return False
 
+# GET API for fetching all records as JSON
 @app.route("/<type>",methods=['GET'])
 def getRows(type):
     resp=[obj.get() for obj in obj_map[type].query.all()]
@@ -156,16 +178,30 @@ def getRows(type):
     else:
         return ('',204)
 
+# GET API for fetching specifc record as JSON
+@app.route("/<type>/<name>",methods=['GET'])
+def getRow(type,name):
+    obj=obj_map[type].query.filter_by(name=name).first()
+    if(obj):
+        obj=obj.get()
+        return (jsonify(obj),200)
+    else:
+        return ('',204)
+
+
+# POST API for inserting records passed as JSON
 @app.route("/<type>",methods=["POST"])
 def insertRecords(type):
     resp=celeryInsert.delay(type,request.json)
     return (f"Request with id {resp.id} received successfully.",200)
 
+# POST API for deleting record passed as JSON
 @app.route("/<type>/<name>",methods=["DELETE"])
 def deleteRecord(type,name):
     resp=celeryDelete.delay(type,name)
     return (f"Request with id {resp.id} received successfully.",200)
 
+# POST API for updating records passed as JSON
 @app.route("/<type>/<name>",methods=["PUT"])
 def updateRecord(type,name):
     if(type=="continent"):
@@ -177,6 +213,7 @@ def updateRecord(type,name):
     
     return (f"Request with id {resp.id} received successfully.",200)
     
+# GET API to return status of task id specified
 @app.route('/task/<id>',methods=["GET"])
 def getTaskDetails(id):
     task=celery.AsyncResult(id)
@@ -188,5 +225,6 @@ def getTaskDetails(id):
 
     return (jsonify(resp),200)
 
+# Main function to execute Flask Server
 if (__name__=="__main__"):
     app.run(debug=False,host="0.0.0.0",port=8080)

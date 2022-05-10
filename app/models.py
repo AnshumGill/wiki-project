@@ -1,8 +1,10 @@
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import NoReferenceError
 
+# Creating instance of SQLAlchemy. This is imported in app.py
 db=SQLAlchemy()
 
+# Continent Model
 class Continent(db.Model):
     id=db.Column(db.Integer,primary_key=True)
     name=db.Column(db.String(100),unique=True,nullable=False)
@@ -10,11 +12,13 @@ class Continent(db.Model):
     area=db.Column(db.Integer)
     countries=db.relationship('Country',backref=db.backref('continent',lazy=True))
 
+    # Constructor
     def __init__(self,name,population,area):
         self.name=name
         self.population=population
         self.area=area
 
+    # Method to convert object to dictionary
     def get(self):
         return {
             'name':self.name,
@@ -22,6 +26,7 @@ class Continent(db.Model):
             'area':self.area
         }
 
+# Country Model
 class Country(db.Model):
     id=db.Column(db.Integer,primary_key=True)
     name=db.Column(db.String(100),unique=True,nullable=False)
@@ -32,6 +37,7 @@ class Country(db.Model):
     continent_id=db.Column(db.Integer,db.ForeignKey('continent.id'),nullable=False)
     cities=db.relationship('City',backref=db.backref('country',lazy=True))
 
+    # Constructor
     def __init__(self,name,population,area,hospitals_count,national_parks_count,continent):
         self.name=name
         self.population=population
@@ -42,6 +48,7 @@ class Country(db.Model):
         if(self.continent_id == None):
             raise NoReferenceError("The continent name provided cannot be found")
 
+    # Method to convert object to dictionary
     def get(self):
         return {
             'name':self.name,
@@ -52,6 +59,7 @@ class Country(db.Model):
             'continent':Continent.query.get(self.continent_id).name
         }
 
+# City Model
 class City(db.Model):
     id=db.Column(db.Integer,primary_key=True)
     name=db.Column(db.String(100),unique=True,nullable=False)
@@ -61,6 +69,7 @@ class City(db.Model):
     tree_count=db.Column(db.Integer)
     country_id=db.Column(db.Integer,db.ForeignKey('country.id'),nullable=False)
 
+    # Constructor
     def __init__(self,name,population,area,road_count,tree_count,country):
         self.name=name
         self.population=population
@@ -71,6 +80,7 @@ class City(db.Model):
         if(self.country_id == None):
             raise NoReferenceError("The country name provided cannot be found")
 
+    # Method to convert object to dictionary
     def get(self):
         return {
             'name':self.name,
