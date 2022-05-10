@@ -1,0 +1,51 @@
+version: "3"
+services:
+    broker_rabbitmq:
+        image: "rabbitmq:3-management-alpine"
+        ports:
+            - "15672:15672"
+            - "5672:5672"
+        container_name: "broker_rabbitmq"
+        environment:
+            - RABBITMQ_DEFAULT_USER=guest
+            - RABBITMQ_DEFAULT_PASS=guest
+
+    db:
+        image: mysql:8.0
+        cap_add:
+            - SYS_NICE
+        restart: always
+        environment:
+            - MYSQL_DATABASE=root
+            - MYSQL_ROOT_PASSWORD=password
+        container_name: "db"
+        command: --init-file /data/application/init.sql
+        ports:
+            - "3306:3306"
+        volumes:
+            - db:/var/lib/mysql
+            - ./init.sql:/data/application/init.sql
+
+    api:
+        build: .
+        command: python3 app.py
+        ports:
+            - "8080:8080"
+        container_name: "flask_app"
+        restart: always
+        depends_on:
+            - broker_rabbitmq
+            - db
+    worker:
+        build: .
+        command: celery -A app.celery worker -l info
+        container_name: "celery_worker"
+        restart: always
+        depends_on:
+            - broker_rabbitmq
+            - db
+
+volumes:
+    db:
+        driver: local
+
